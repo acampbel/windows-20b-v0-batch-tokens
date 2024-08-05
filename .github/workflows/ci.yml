@@ -1,0 +1,59 @@
+name: MATLAB Build
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+     - cron:  '33 6 * * 4' # schedule a build every week to keep cache warm
+
+jobs:
+  # This workflow contains a single job called "build"
+  build:   
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4          
+      
+      - name: Install MPM
+        run: Invoke-WebRequest -Uri https://www.mathworks.com/mpm/win64/mpm -OutFile mpm.exe
+
+      - uses: actions/cache/restore@v3
+        id: cache-restore
+        with:
+          path: D:\a\matlab
+          key: matlab-cache    
+
+      - name: Install MATLAB
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: .\mpm.exe install --release R2020b --destination "D:\a\matlab" --products MATLAB Parallel_Computing_Toolbox MATLAB_Coder
+
+      - uses: actions/cache/save@v3
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        id: cache-save
+        with:
+          path: D:\a\matlab
+          key: matlab-cache    
+
+      - name: Add MATLAB to the PATH
+        shell: bash
+        run: echo "D:\a\matlab\bin" >> $GITHUB_PATH
+
+      - name: Download matlab-batch installer
+        run: Invoke-WebRequest -Uri https://ssd.mathworks.com/supportfiles/ci/matlab-batch/v0/install.sh -OutFile install-matlab-batch.sh
+        
+      - name: Install matlab-batch
+        shell: bash
+        run: ./install-matlab-batch.sh
+
+      # Runs a set of commands using the runners shell
+      - name: Check token
+        working-directory: C:\Program Files\matlab-batch
+        run: ./matlab-batch.exe "ver, disp(newline), disp('Licenses on token:'), license('inuse')" -logfile output.txt
+        env:
+          MATHWORKS_TOKEN: ${{secrets.MATHWORKS_TOKEN}}
+          MATHWORKS_ACCOUNT: ${{secrets.MATHWORKS_ACCOUNT}}
+
+      - name: check output
+        run: cat "C:\Program Files\matlab-batch\output.txt"
+        
